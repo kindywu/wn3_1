@@ -5,3 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = [".", "tests"]
+
+[dependency-groups]
+dev = ["pytest>=9.0.3"]

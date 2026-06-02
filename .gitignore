@@ -9,5 +9,11 @@ wheels/
 # dict files
 dict/
 
+# asset file
+asset/
+
+# db file
+db/
+
 # Virtual environments
 .venv
