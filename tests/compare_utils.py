@@ -17,8 +17,8 @@ def _norm_pos(pos: str) -> str:
 
 def _strip_markers(word: str) -> str:
     """去掉 WordNet data.* 中的形容词/副词标记后缀，
-    如 `big(p)` → `big`、`running(a)` → `running`。"""
-    return re.sub(r"\([aps]\)$", "", word)
+    如 `big(p)` → `big`、`running(a)` → `running`、`galore(ip)` → `galore`。"""
+    return re.sub(r"\((?:ip|[aps])\)$", "", word)
 
 
 def _norm_word(word: str) -> str:
@@ -45,6 +45,19 @@ def compare_lookup_results(
     返回差异描述列表，空列表表示完全一致。
     """
     diffs: List[str] = []
+
+    # 从 index.sense 构建有效 (synset_id, lemma, lex_id) 集合，
+    # 用于过滤 data.* 中无对应 sense_key 的 ghost word 条目
+    # （如 data.noun 中的 case-variant 重复词条 Earth(0)/earth(2)，
+    #   index.sense 只收录了小写版本）。
+    _s = set()
+    for sk, si in file_db.senses.items():
+        lemma = sk.split("%")[0].lower()
+        sid = _norm_sid(si.offset + si.pos)
+        m = re.search(r"%\d+:\d+:(\d+)", sk)
+        lex_id = int(m.group(1)) if m else 0
+        _s.add((sid, lemma, lex_id))
+    valid_sense_words = _s
 
     # 用归一化后的 synset_id 对齐（处理 s/a 差异）
     file_norm: Dict[str, List[dict]] = {}
@@ -77,13 +90,13 @@ def compare_lookup_results(
             continue
 
         for f, d in zip(f_list, d_list):
-            diffs.extend(_compare_single_sense(f, d, file_db, nid))
+            diffs.extend(_compare_single_sense(f, d, file_db, nid, valid_sense_words))
 
     return diffs
 
 
 def _compare_single_sense(
-    f: dict, d: dict, file_db, norm_id: str
+    f: dict, d: dict, file_db, norm_id: str, valid_sense_words: set
 ) -> List[str]:
     """对比单个 sense 的详细信息。"""
     diffs: List[str] = []
@@ -103,9 +116,7 @@ def _compare_single_sense(
             fv = _norm_pos(str(fv)) if fv is not None else fv
             dv = _norm_pos(str(dv)) if dv is not None else dv
         if fv != dv:
-            diffs.append(
-                f"{sid}.{key}: 文件={f.get(key)!r} vs DB={d.get(key)!r}"
-            )
+            diffs.append(f"{sid}.{key}: 文件={f.get(key)!r} vs DB={d.get(key)!r}")
 
     # pos_name：'形容词卫星' vs '形容词' 对 satellite 是已知差异
     if not is_satellite:
@@ -128,8 +139,14 @@ def _compare_single_sense(
     if fg != dg:
         diffs.append(f"{sid}.gloss: 文件={fg!r} vs DB={dg!r}")
 
-    # ── words（忽略大小写、忽略 (a)/(p) 标记、忽略顺序） ──
-    f_words = {(_norm_word(w["word"]), w["lex_id"]) for w in f["words"]}
+    # ── words（忽略大小写、忽略 (a)/(p)/(ip) 标记、忽略顺序） ──
+    # 过滤 data.* 中有但 index.sense 中无对应 sense_key 的 ghost word 条目
+    f_words = {
+        (_norm_word(w["word"]), w["lex_id"])
+        for w in f["words"]
+        if (_norm_word(w["word"]), w["lex_id"])
+        in {(lemma, lid) for sid, lemma, lid in valid_sense_words if sid == norm_id}
+    }
     d_words = {(_norm_word(w["word"]), w["lex_id"]) for w in d["words"]}
     if f_words != d_words:
         diffs.append(f"{sid}.words: 文件={f_words} vs DB={d_words}")
@@ -147,15 +164,17 @@ def _compare_single_sense(
             fv = f_cw.get(k)
             dv = d_cw.get(k)
             if fv != dv:
-                diffs.append(
-                    f"{sid}.current_word.{k}: 文件={fv!r} vs DB={dv!r}"
-                )
+                diffs.append(f"{sid}.current_word.{k}: 文件={fv!r} vs DB={dv!r}")
 
-        # lex_id：main.py 可能因大小写敏感匹配失败而得到 None
+        # lex_id：main.py 可能因大小写敏感匹配失败而得到 None，
+        # 也可能因 data.* 中同一词有多种大小写/lex_id 变体而取到错误的 lex_id。
+        # 当两端 sense_key 一致时，以 sense_key 中编码的 lex_id 为准，跳过此差异。
         f_lex = f_cw.get("lex_id")
         d_lex = d_cw.get("lex_id")
         if f_lex != d_lex:
-            if f_lex is None and f_cw.get("sense_key") == d_cw.get("sense_key"):
+            if (
+                f_lex is None and f_cw.get("sense_key") == d_cw.get("sense_key")
+            ) or f_cw.get("sense_key") == d_cw.get("sense_key"):
                 pass
             else:
                 diffs.append(
@@ -187,9 +206,7 @@ def _compare_single_sense(
             target = file_db.synsets.get(p.target_offset + p.pos)
             file_ptr_map[key] = {
                 "gloss": (target.gloss if target else "").strip(),
-                "words": {
-                    _norm_word(w[0]) for w in (target.words if target else [])
-                },
+                "words": {_norm_word(w[0]) for w in (target.words if target else [])},
             }
 
     db_ptr_map: Dict[Tuple, dict] = {}
@@ -205,9 +222,7 @@ def _compare_single_sense(
             words_str = target["words"]
             db_words = set()
             if words_str != "(未加载)":
-                db_words = {
-                    _norm_word(w.strip()) for w in words_str.split(",")
-                }
+                db_words = {_norm_word(w.strip()) for w in words_str.split(",")}
             db_ptr_map[key] = {
                 "gloss": (target.get("gloss", "") or "").strip(),
                 "words": db_words,
@@ -218,9 +233,7 @@ def _compare_single_sense(
     if file_keys != db_keys:
         only_file = sorted(file_keys - db_keys)
         only_db = sorted(db_keys - file_keys)
-        diffs.append(
-            f"{sid}.pointers: 仅文件={only_file}, 仅DB={only_db}"
-        )
+        diffs.append(f"{sid}.pointers: 仅文件={only_file}, 仅DB={only_db}")
 
     for key in file_keys & db_keys:
         fm = file_ptr_map[key]

@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 MAIN_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(MAIN_DIR))
 from main import POINTER_DESC, POS_FILES, SS_TYPE_MAP
+
 sys.path.pop(0)
 
 
@@ -32,6 +33,7 @@ class DbWordNetDB:
         self._sense_examples: Dict[int, List[int]] = {}
         self._frames: Dict[int, str] = {}
         self._examples: Dict[int, str] = {}
+        self._morph_exc: Dict[str, Dict[str, str]] = {}
 
         self._load_all()
 
@@ -46,6 +48,7 @@ class DbWordNetDB:
         self._load_sense_examples()
         self._load_frames()
         self._load_examples()
+        self._load_morph_exceptions()
 
     # ── 预加载 ──
 
@@ -74,9 +77,7 @@ class DbWordNetDB:
         )
         for row in cur.fetchall():
             sid = row["synset_id"]
-            self._synset_words.setdefault(sid, []).append(
-                (row["lemma"], row["lex_id"])
-            )
+            self._synset_words.setdefault(sid, []).append((row["lemma"], row["lex_id"]))
 
     def _load_pointers(self):
         cur = self.conn.cursor()
@@ -87,12 +88,14 @@ class DbWordNetDB:
         )
         for row in cur.fetchall():
             sid = row["source_synset_id"]
-            self._pointers.setdefault(sid, []).append({
-                "symbol": row["symbol"],
-                "target_synset_id": row["target_synset_id"],
-                "source_w_num": row["source_w_num"],
-                "target_w_num": row["target_w_num"],
-            })
+            self._pointers.setdefault(sid, []).append(
+                {
+                    "symbol": row["symbol"],
+                    "target_synset_id": row["target_synset_id"],
+                    "source_w_num": row["source_w_num"],
+                    "target_w_num": row["target_w_num"],
+                }
+            )
 
     def _load_entries(self):
         cur = self.conn.cursor()
@@ -122,17 +125,19 @@ class DbWordNetDB:
         )
         for row in cur.fetchall():
             key = (row["lemma"], row["pos"])
-            self._entry_senses.setdefault(key, []).append({
-                "sense_id": row["sense_id"],
-                "synset_id": row["synset_id"],
-                "entry_id": row["entry_id"],
-                "sense_key": row["sense_key"],
-                "sense_number": row["sense_number"],
-                "tag_cnt": row["tag_cnt"],
-                "lex_id": row["lex_id"],
-                "lemma": row["lemma"],
-                "pos": row["pos"],
-            })
+            self._entry_senses.setdefault(key, []).append(
+                {
+                    "sense_id": row["sense_id"],
+                    "synset_id": row["synset_id"],
+                    "entry_id": row["entry_id"],
+                    "sense_key": row["sense_key"],
+                    "sense_number": row["sense_number"],
+                    "tag_cnt": row["tag_cnt"],
+                    "lex_id": row["lex_id"],
+                    "lemma": row["lemma"],
+                    "pos": row["pos"],
+                }
+            )
 
     def _load_frequencies(self):
         cur = self.conn.cursor()
@@ -161,9 +166,7 @@ class DbWordNetDB:
 
     def _load_frames(self):
         cur = self.conn.cursor()
-        for row in cur.execute(
-            "SELECT frame_number, frame_text FROM syntactic_frame"
-        ):
+        for row in cur.execute("SELECT frame_number, frame_text FROM syntactic_frame"):
             self._frames[row["frame_number"]] = row["frame_text"]
 
     def _load_examples(self):
@@ -172,6 +175,15 @@ class DbWordNetDB:
             "SELECT sentence_number, sentence_text FROM example_sentence"
         ):
             self._examples[row["sentence_number"]] = row["sentence_text"]
+
+    def _load_morph_exceptions(self):
+        cur = self.conn.cursor()
+        for row in cur.execute(
+            "SELECT pos, surface_form, base_form FROM morph_exception WHERE version='3.1'"
+        ):
+            self._morph_exc.setdefault(row["pos"], {})[row["surface_form"]] = row[
+                "base_form"
+            ]
 
     # ── 查询 API ──
 
@@ -221,9 +233,7 @@ class DbWordNetDB:
             target_info = {
                 "offset": target_synset_id[:-1],
                 "pos": target_synset_id[-1],
-                "ss_type": SS_TYPE_MAP.get(
-                    target_synset_id[-1], target_synset_id[-1]
-                ),
+                "ss_type": SS_TYPE_MAP.get(target_synset_id[-1], target_synset_id[-1]),
                 "words": target_word_str if target else "(未加载)",
                 "gloss": target["gloss"] if target else "",
             }
@@ -251,10 +261,12 @@ class DbWordNetDB:
         for num in self._sense_examples.get(sense["sense_id"], []):
             text = self._examples.get(num)
             if text:
-                examples.append({
-                    "id": num,
-                    "text": text.replace("%s", entry["lemma"]),
-                })
+                examples.append(
+                    {
+                        "id": num,
+                        "text": text.replace("%s", entry["lemma"]),
+                    }
+                )
 
         return {
             "lemma": entry["lemma"],

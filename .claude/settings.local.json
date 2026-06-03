@@ -3,7 +3,8 @@
     "allow": [
       "Bash(tar -tzf /c/ws/python/wn3_1/asset/wn3.1.dict.tar.gz)",
       "Bash(python *)",
-      "Bash(awk '{print $1, $2}')"
+      "Bash(awk '{print $1, $2}')",
+      "Bash(sqlite3 *)"
     ]
   }
 }

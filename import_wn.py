@@ -285,43 +285,9 @@ def _parse_data_lines(filepath: Path, pos: str) -> Iterator[Tuple[Dict, List[Dic
 
 def parse_data_file(filepath: Path, pos: str) -> Iterator[Tuple[Dict, List[Dict]]]:
     """解析 data.* 文件，逐行 yield (synset_row, [pointer_rows...])。
-    对于 data.adj，先构建 offset→ss_type 映射，用于校正 adj 指针的 t_pos
-    （grind 编译器对 adj 指针统一使用 t_pos='a'，但实际 target 可能是 's' 型 satellite）"""
-    if pos != "a":
-        yield from _parse_data_lines(filepath, pos)
-        return
-
-    # data.adj: 先扫描所有行，构建 offset→ss_type 映射
-    offset_ss_map: Dict[str, str] = {}
-    with open(filepath, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("  ") or line.startswith("This"):
-                continue
-            head, _, gloss = line.partition(" | ")
-            if not gloss:
-                continue
-            parts = head.split()
-            if len(parts) < 4 or not parts[0].isdigit() or len(parts[0]) != 8:
-                continue
-            offset_ss_map[parts[0]] = parts[2]  # offset -> ss_type (a or s)
-
-    # 第二遍：解析并校正 pointer 的 target_synset_id
-    for synset_row, pointers in _parse_data_lines(filepath, pos):
-        corrected_pointers = []
-        for p in pointers:
-            # 提取 t_offset 和 t_pos，用映射校正 t_pos
-            raw_id = p["target_synset_id"]
-            t_offset = raw_id[:-1]
-            t_pos = raw_id[-1]
-            actual_pos = offset_ss_map.get(t_offset, t_pos)
-            corrected_pointers.append(
-                {
-                    **p,
-                    "target_synset_id": f"{t_offset}{actual_pos}",
-                }
-            )
-        yield (synset_row, corrected_pointers)
+    adj satellite 指针的 t_pos 校正由 import_synsets_and_pointers 中的
+    SQL UPDATE 统一处理（基于完整 synset 表做判断，而非仅 adj 内部映射）。"""
+    yield from _parse_data_lines(filepath, pos)
 
 
 def parse_index_file(filepath: Path, pos: str) -> Iterator[Dict]:
