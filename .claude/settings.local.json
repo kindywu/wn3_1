@@ -7,7 +7,8 @@
       "Bash(sqlite3 *)",
       "Bash(uv run python -c ' *)",
       "Bash(uv run *)",
-      "Read(//c/Users/kindy/AppData/Local/Temp/claude/C--ws-python-wn3_1/c8ae9e72-6e35-485c-9808-c990e13b2e13/tasks/**)"
+      "Read(//c/Users/kindy/AppData/Local/Temp/claude/C--ws-python-wn3_1/c8ae9e72-6e35-485c-9808-c990e13b2e13/tasks/**)",
+      "Bash(uv add *)"
     ]
   }
 }

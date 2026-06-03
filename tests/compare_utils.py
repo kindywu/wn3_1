@@ -46,19 +46,6 @@ def compare_lookup_results(
     """
     diffs: List[str] = []
 
-    # 从 index.sense 构建有效 (synset_id, lemma, lex_id) 集合，
-    # 用于过滤 data.* 中无对应 sense_key 的 ghost word 条目
-    # （如 data.noun 中的 case-variant 重复词条 Earth(0)/earth(2)，
-    #   index.sense 只收录了小写版本）。
-    _s = set()
-    for sk, si in file_db.senses.items():
-        lemma = sk.split("%")[0].lower()
-        sid = _norm_sid(si.offset + si.pos)
-        m = re.search(r"%\d+:\d+:(\d+)", sk)
-        lex_id = int(m.group(1)) if m else 0
-        _s.add((sid, lemma, lex_id))
-    valid_sense_words = _s
-
     # 用归一化后的 synset_id 对齐（处理 s/a 差异）
     file_norm: Dict[str, List[dict]] = {}
     for r in file_results:
@@ -90,13 +77,13 @@ def compare_lookup_results(
             continue
 
         for f, d in zip(f_list, d_list):
-            diffs.extend(_compare_single_sense(f, d, file_db, nid, valid_sense_words))
+            diffs.extend(_compare_single_sense(f, d, file_db, nid))
 
     return diffs
 
 
 def _compare_single_sense(
-    f: dict, d: dict, file_db, norm_id: str, valid_sense_words: set
+    f: dict, d: dict, file_db, norm_id: str
 ) -> List[str]:
     """对比单个 sense 的详细信息。"""
     diffs: List[str] = []
@@ -140,13 +127,7 @@ def _compare_single_sense(
         diffs.append(f"{sid}.gloss: 文件={fg!r} vs DB={dg!r}")
 
     # ── words（忽略大小写、忽略 (a)/(p)/(ip) 标记、忽略顺序） ──
-    # 过滤 data.* 中有但 index.sense 中无对应 sense_key 的 ghost word 条目
-    f_words = {
-        (_norm_word(w["word"]), w["lex_id"])
-        for w in f["words"]
-        if (_norm_word(w["word"]), w["lex_id"])
-        in {(lemma, lid) for sid, lemma, lid in valid_sense_words if sid == norm_id}
-    }
+    f_words = {(_norm_word(w["word"]), w["lex_id"]) for w in f["words"]}
     d_words = {(_norm_word(w["word"]), w["lex_id"]) for w in d["words"]}
     if f_words != d_words:
         diffs.append(f"{sid}.words: 文件={f_words} vs DB={d_words}")

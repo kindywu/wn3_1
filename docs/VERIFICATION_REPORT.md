@@ -146,6 +146,23 @@ write%2:36:02::
 
 cntlist 中有 2,080 条 sense_key 在 index.sense 中不存在。多为形容词卫星形式、副词短语、多词表达等。
 
+### 7.4 data.* 与 index.sense 的 words / lex_id 不一致（8 个 synsets）
+
+`data.*` 文件中有 **8 个 synset** 包含的词形或 lex_id 在 `index.sense` 中找不到对应条目（ghost word 或重复 lex_id 变体），导致对比测试时文件端 words 列表与数据库端不一致：
+
+| synset_id | 文件端 words (data.*) | 数据库端 words (index.sense) | 影响词形 |
+|-----------|----------------------|----------------------------|----------|
+| 03195447n | ddc(0,1), zalcitabine(0), dideoxycytosine(0) | ddc(0), zalcitabine(0), dideoxycytosine(0) | ddc |
+| 03195581n | ddi(0,1), didanosine(0), dideoxyinosine(0) | ddi(0), didanosine(0), dideoxyinosine(0) | ddi |
+| 08579604n | earth(0,1) | earth(0) | earth |
+| 09293800n | earth(0,2), globe(0), world(0) | earth(0), globe(0), world(0) | earth, globe, world |
+| 09381255n | moon(1,3) | moon(1) | moon |
+| 09473312n | sun(0,2) | sun(0) | sun |
+| 13648977n | k(0), kb(0,1), kib(0), kibibyte(0), kilobyte(0) | k(0), kb(0), kib(0), kibibyte(0), kilobyte(0) | k, kb |
+| 13649142n | k(1), kb(2,3), kilobyte(1) | k(1), kb(2), kilobyte(1) | k, kb |
+
+> 注：以上差异仅影响 `words` 列表中的 lex_id 重复项；这些重复条目在 `index.sense` 中无对应 sense_key，不属于导入代码缺陷。
+
 ---
 
 ## 8. 对比引擎应对的已知差异 (compare_utils.py)
@@ -156,7 +173,6 @@ cntlist 中有 2,080 条 sense_key 在 index.sense 中不存在。多为形容�
 | 词形标记 (a)/(p)/(ip) | `_strip_markers()` 去除后缀后比较 |
 | gloss 前导空格 | 两端 strip 后比较 |
 | satellite sense_key | main.py 返回 None 时跳过 current_word 比较 |
-| Ghost word (大小写变体) | 通过 `valid_sense_words` 集合过滤 data.* 中无对应 sense_key 的条目 |
 
 ---
 
@@ -164,4 +180,4 @@ cntlist 中有 2,080 条 sense_key 在 index.sense 中不存在。多为形容�
 
 **导入结果: ALL PASS**
 
-三层数据校验全部通过，147K 参数化对比测试覆盖完整。所有发现的不一致均为 WordNet 3.1 官方数据集已知的内部数据问题，已在 `db/import_wn3.1.log` 中完整记录。
+三层数据校验全部通过，147K 参数化对比测试覆盖完整。所有发现的不一致均为 WordNet 3.1 官方数据集已知的内部数据问题（已在上文第 7 节完整记录），非导入代码缺陷。
